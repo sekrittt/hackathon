@@ -1,0 +1,7 @@
+pandas
+openpyxl
+validators
+fuzzywuzzy
+beautifulsoup4
+websearch-python
+python-Levenshtein
