@@ -1,18 +1,17 @@
-# from websearch import WebSearch as web
-
-# for page in web('ООО "АГРОПЛАЗМА"').pages:
-#     print(page)
-import os, requests, re, json
+from types import FunctionType
+import eel, os, requests, re, json
 from bs4 import BeautifulSoup
 import pandas as pd
 from fuzzywuzzy import process
+
 os.system('cls||clear')
 
-def main():
+@eel.expose
+def process_data():
     excel_1 = pd.read_excel('data.xlsx')
-    excel_2 = pd.read_excel('2. Продукты_new.xlsx')
-    excel_3 = pd.read_excel('3. Отрасли.xlsx')
-    excel_4 = pd.read_excel('4. Технологии.xlsx')
+    # excel_2 = pd.read_excel('2. Продукты_new.xlsx')
+    # excel_3 = pd.read_excel('3. Отрасли.xlsx')
+    # excel_4 = pd.read_excel('4. Технологии.xlsx')
 
     help_branch = pd.read_excel('Справочник. Отрасли и подотрасли.xlsx')
     help_tech = pd.read_excel('Справочник. Технологии.xlsx')
@@ -62,19 +61,18 @@ def main():
 
     def get_text_from_site(url: str):
         try:
-
             if url in cache:
                 return cache[url]
-
             site = requests.get(re.sub(r'https\:\/\/', 'http://', url))
             site.encoding = site.apparent_encoding
             html = BeautifulSoup(site.text, 'html.parser')
 
+            text = html.get_text()
             text = re.sub(r'\s+', ' ', html.get_text())
-            cache[url] = text
+            cache[url] = {'text': text}
             with open('./cache.json', 'w', encoding='utf-8') as f:
                 f.write(json.dumps(cache))
-            return text
+            return {'text': text}
         except Exception as e:
             cache[url] = None
             with open('./cache.json', 'w', encoding='utf-8') as f:
@@ -87,19 +85,19 @@ def main():
                 if three in help_tech_formatted[one][two]:
                     return True
                 else:
-                    return 3
+                    return (3, help_tech_formatted[one][two])
             else:
-                return 2
+                return (2, help_tech_formatted[one])
         else:
-            return 1
+            return (1, help_tech_formatted)
     def check_branches(one, two):
         if one in help_branch_formatted:
             if two in help_branch_formatted[one]:
                 return True
             else:
-                return 2
+                return (2, help_branch_formatted[one])
         else:
-            return 1
+            return (1, help_branch_formatted)
     def url_validate(url: str):
         if len(re.findall(r"^https?:\\/\\/(?:www\\.)?[-a-zA-Zа-яА-ЯёЁ0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Zа-яА-ЯёЁ0-9()@:%_\\+.~#?&\\/=]*)$", url)) > 0:
             return True
@@ -125,8 +123,8 @@ def main():
         if index == 0:
             continue
         site: str = row[7]
-        if site in result:
-            continue
+        # if site in result:
+        #     continue
         # if not validators.url(site):
         r = {
             'valid_url': True,
@@ -140,25 +138,37 @@ def main():
         if site.lower() == 'не указано' or site == 'н/д' or site == '-':
             print('Invalid url!', site)
             r['valid_url'] = False
-        if not check_techs(row[4],row[5],row[6]):
-            print('Invalid branches tech')
-            r['valid_techs'] = False
-        if not check_branches(row[2],row[3]):
+        techs_check = check_techs(row[4],row[5],row[6])
+        if techs_check != True:
+            print('Invalid techs branch')
+            r['valid_tech'] = techs_check
+        branches_check = check_branches(row[2],row[3])
+        if branches_check != True:
             print('Invalid branches branch')
-            r['valid_branch'] = False
+            r['valid_branch'] = branches_check
         print(f'Processing company ({row[1]} {site})...')
         site_text = get_text_from_site(site) if r['valid_url'] else None
         if site_text is None:
             r['site_is_available'] = False
-        r['acc_desc'] = process.extractOne(row[8], [site_text])[1] if not site_text is None else 0
-        r['acc_name'] = process.extractOne(row[1], [site_text])[1] if not site_text is None else 0
-        r['have_name_in_site'] = check_have_name_in_site(row[1], site_text) if not site_text is None else False
+        r['acc_desc'] = process.extractOne(row[8], [site_text['text']])[1] if not site_text is None else 0
+        r['acc_name'] = process.extractOne(row[1], [site_text['text']])[1] if not site_text is None else 0
+        r['have_name_in_site'] = check_have_name_in_site(row[1], site_text['text']) if not site_text is None else False
         result[row[1]] = r
         print(f'#{index} Acc_Desc: {r["acc_desc"]}, Acc_Name: {r["acc_name"]}')
+        if (isinstance(eel.load_data, FunctionType)):
+            eel.load_data({**r, 'row': list(row), 'id': index})
+        break
+    if (isinstance(eel.end_processing, FunctionType)):
+        eel.end_processing()
 
     with open('./result.json', 'w', encoding='utf-8') as f:
         f.write(json.dumps(result))
 
+@eel.expose
+def load_file(file_name: str, data: list):
+    with open(file_name, 'wb+') as f:
+        f.write(bytes(data))
+
 if __name__ == "__main__":
-    os.system('cls||clear')
-    main()
+    eel.init('gui')
+    eel.start('index.html')
